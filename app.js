@@ -72,6 +72,10 @@ function calculateWeatherAtAltitude(surfaceWeather, altitude) {
   const cloudCoverAtAltitudeClamped = Math.max(0, Math.min(100, cloudCoverAtAltitude));  // Clamp cloud cover between 0 and 100
 
   const visibilityAtAltitude = surfaceWeather.visibility + (altitude / 1000) * 1000;  // Adjust visibility based on altitude
+
+  // Assume rain info is in surfaceWeather.rain and consider it, if available
+  const rain = surfaceWeather.rain ? surfaceWeather.rain['1h'] || 0 : 0;
+
   return {
     temp: tempAtAltitudeK,
     pressure: pressureAtAltitude / 100,  // Convert Pa to hPa
@@ -79,7 +83,8 @@ function calculateWeatherAtAltitude(surfaceWeather, altitude) {
     windSpeed: windSpeedAtAltitude,
     windDirection: windDirectionAtAltitude,
     cloudCover: cloudCoverAtAltitudeClamped,
-    visibility: visibilityAtAltitude
+    visibility: visibilityAtAltitude,
+    rain: rain
   };
 }
 
@@ -104,37 +109,6 @@ function readCoordinatesFromCSV(filePath) {
   });
 }
 
-// Initialize grid based on Indian city coordinates
-// async function initializeGrid(coordinates, altRange, cellSize) {
-//   const grid = [];
-//   for (let coord of coordinates) {
-//     const lat = coord.latitude;
-//     const lon = coord.longitude;
-//     const latLayer = [];
-//     for (let alt = altRange.min; alt <= altRange.max; alt += cellSize) {
-//       const node = new Node(lat, lon, alt);
-//       const surfaceWeather = await fetchSurfaceWeatherData(lat, lon);
-//       if (surfaceWeather) {
-//         const weatherAtAltitude = calculateWeatherAtAltitude(surfaceWeather, alt * 1000);  // Convert km to meters
-//         node.updateWeather(weatherAtAltitude);
-//       }
-//       latLayer.push(node);
-//     }
-//     grid.push(latLayer);
-//   }
-
-//   for (let i = 0; i < grid.length; i++) {
-//     for (let j = 0; j < grid[i].length; j++) {
-//       const node = grid[i][j];
-//       if (i > 0) node.addEdge(grid[i-1][j], Math.random());
-//       if (i < grid.length - 1) node.addEdge(grid[i+1][j], Math.random());
-//       if (j > 0) node.addEdge(grid[i][j-1], Math.random());
-//       if (j < grid[i].length - 1) node.addEdge(grid[i][j+1], Math.random());
-//     }
-//   }
-
-//   return grid;
-// }
 // Initialize grid based on Indian city coordinates
 async function initializeGrid(coordinates, altRange, cellSize) {
   const grid = [];
@@ -179,11 +153,15 @@ async function initializeGrid(coordinates, altRange, cellSize) {
   return grid;
 }
 
+// Update calculateEdgeWeight function to use rain and cloud cover
 function calculateEdgeWeight(node1, node2) {
-  const windSpeedDifference = Math.abs(node1.weather.windSpeed - node2.weather.windSpeed);
+  const rainDifference = Math.abs(node1.weather.rain - node2.weather.rain);
+  const cloudCoverDifference = Math.abs(node1.weather.cloudCover - node2.weather.cloudCover);
   
-  const normalizedWindSpeedDifference = normalize(windSpeedDifference);
-  const weight = normalizedWindSpeedDifference;
+  const normalizedRainDifference = normalize(rainDifference);
+  const normalizedCloudCoverDifference = normalize(cloudCoverDifference);
+  
+  const weight = normalizedRainDifference + normalizedCloudCoverDifference;
   
   return weight;
 }
@@ -244,7 +222,11 @@ readCoordinatesFromCSV(filePath).then(coordinates => {
 
     const path = dijkstra(grid, source, destination);
 
-    path.forEach(node => node.displayInfo());
+    path.forEach(node => {
+      if (node.distance !== Infinity) {
+        node.displayInfo();
+      }
+    });
   });
 }).catch(error => {
   console.error(`Error reading coordinates from CSV: ${error}`);
